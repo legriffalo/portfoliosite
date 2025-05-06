@@ -1,13 +1,165 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Vite + React + TS</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vite + React + TS</title>
+</head>
+
+<body>
+  <canvas id="canvas"></canvas>
+  <div id="root"></div>
+  <script type="module" src="/src/main.tsx"></script>
+  <script>
+    class Orb {
+      constructor(id, radius, density, color, stroke, positionX, positionY, velocityX, velocityY, accelerationX, accelerationY) {
+        this.id = id;
+        this.radius = radius !== undefined ? radius : Math.random() * 40;
+        this.density = density !== undefined ? density : Math.random() * 5;
+        this.color = color !== undefined ? color : "#F5F5F4";
+        this.stroke = stroke !== undefined ? stroke : "#ffffff";
+
+        this.position = {
+          x: positionX !== undefined ? positionX : Math.random() * canvas.width,
+          y: positionY !== undefined ? positionY : Math.random() * canvas.height
+        };
+        this.velocity = {
+          x: velocityX !== undefined ? velocityX : (Math.random() - 0.5) * 12,
+          y: velocityY !== undefined ? velocityY : (Math.random() - 0.5) * 12
+        };
+        this.acceleration = { x: accelerationX, y: accelerationY };
+        this.destroyed = false;
+        this.mass = radius * density;
+      }
+
+      redraw(ctx) {
+        ctx.beginPath();
+        ctx.arc(this.position.x, this.position.y, this.radius, 0, 2 * Math.PI);
+        ctx.fillStyle = `${this.color}`;
+        ctx.fill();
+        ctx.stroke();
+        ctx.strokeStyle = `${this.stroke}`;
+      }
+
+      updatePosition(canvas) {
+        if (this.destroyed) return;
+        this.position.x += this.velocity.x;
+        this.position.y += this.velocity.y;
+        this.radius -= 0.3;
+        if (this.radius <= 0) {
+          this.destroyed = true;
+          return;
+        }
+        //reverse velocity if boundary is hit
+        if (this.position.x > canvas.width || this.position.x < 0) {
+          this.velocity.x = -this.velocity.x;
+        }
+        if (this.position.y > canvas.height || this.position.y < 0) {
+          this.velocity.y = -this.velocity.y;
+        }
+      }
+    }
+
+    function clearCanvas(ctx, canvas) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function checkCollision(orb1, orb2) {
+      const dx = orb1.position.x - orb2.position.x;
+      const dy = orb1.position.y - orb2.position.y;
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      if (distance < orb1.radius + orb2.radius) {
+        return true;
+      } else {
+        return false;
+      }
+    }
+
+    function handleCollision(orb1, orb2) {
+      const m1 = orb1.mass;
+      const m2 = orb2.mass;
+      const v1x = orb1.velocity.x;
+      const v1y = orb1.velocity.y;
+      const v2x = orb2.velocity.x;
+      const v2y = orb2.velocity.y;
+
+      orb1.velocity.x = (v1x * (m1 - m2) + 2 * m2 * v2x) / (m1 + m2);
+      orb1.velocity.y = (v1y * (m1 - m2) + 2 * m2 * v2y) / (m1 + m2);
+      orb2.velocity.x = (v2x * (m2 - m1) + 2 * m1 * v1x) / (m1 + m2);
+      orb2.velocity.y = (v2y * (m2 - m1) + 2 * m1 * v1y) / (m1 + m2);
+    }
+
+    function animateOrbs(orbs, ctx, canvas) {
+      clearCanvas(ctx, canvas);
+      canvas.width = getViewportWidthWithoutScrollbar();
+      canvas.height = window.innerHeight;
+
+      for (let i = 0; i < orbs.length; i++) {
+        const orb1 = orbs[i];
+        orb1.updatePosition(canvas);
+        if (!orb1.destroyed) {
+          orb1.redraw(ctx);
+        }
+
+        // Collision detection
+        for (let j = i + 1; j < orbs.length; j++) {
+          const orb2 = orbs[j];
+          if (!orb2.destroyed && checkCollision(orb1, orb2)) {
+            handleCollision(orb1, orb2);
+          }
+        }
+      }
+      orbs = orbs.filter(orb => !orb.destroyed);
+
+      // Add new orbs here:
+      if (Date.now() - lastOrbSpawnTime > 200) { //check time
+        let rand = Math.random();
+        orbs.push(new Orb(nextOrbId++, 50, 2));
+        lastOrbSpawnTime = Date.now();
+      }
+
+      if (orbs.length > 0) {
+        requestAnimationFrame(() => animateOrbs(orbs, ctx, canvas));
+      }
+      return orbs;
+    }
+
+    const appzone = document.getElementById("root");
+    const canvas = document.getElementById("canvas");
+    canvas.width = getViewportWidthWithoutScrollbar();
+    canvas.height = window.innerHeight;
+
+    function getViewportWidthWithoutScrollbar() {
+      const innerWidth = window.innerWidth;
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      console.log(innerWidth)
+      console.log(scrollbarWidth)
+      return innerWidth - scrollbarWidth;
+    }
+    function handleResize() {
+      canvas.width = getViewportWidthWithoutScrollbar();
+      canvas.height = window.innerHeight;
+
+    }
+
+    const ctx = canvas.getContext("2d");
+
+
+    let orbs = [];
+    let nextOrbId = 1;
+    let lastOrbSpawnTime = Date.now(); //keep track of last spawn
+
+    orbs.push(new Orb(nextOrbId++, 60, 2, "#ffffff", 200, 200, 10, 10, 0, 0));
+    orbs.push(new Orb(nextOrbId++, 60, 2, color = "#333333", 200, 100, -10, 20, 0, 0));
+    orbs.push(new Orb(nextOrbId++, 30, 5, 100, 180, -10, 20, 0, 0));
+
+
+    animateOrbs(orbs, ctx, canvas);
+
+
+  </script>
+</body>
+
 </html>
